@@ -8,7 +8,12 @@ import '../models/form_response.dart';
 import '../models/stratification.dart';
 
 class ApiService {
-  static const String baseUrl = 'https://painel.sxdata.com.br/api';
+  // Producao por padrao. Para apontar outro ambiente, passe no build:
+  //   --dart-define=API_BASE_URL=https://painel.sxdata.online/api
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://painel.sxdata.com.br/api',
+  );
   //static const String baseUrl = 'http://localhost/painel_sxdata/api';
 
   static Future<Map<String, String>> _getHeaders() async {
