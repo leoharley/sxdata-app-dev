@@ -1,5 +1,6 @@
 // screens/settings_screen.dart
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/photo_storage_service.dart';
 
@@ -18,11 +19,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _imageCompression = true;
   bool _notifications = true;
   bool _darkMode = false;
+  String _appVersion = '';
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
+    _loadAppVersion();
+  }
+
+  // Versão real do build (pubspec.yaml), não um valor fixo
+  Future<void> _loadAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (mounted) {
+        setState(() {
+          _appVersion = info.version;
+        });
+      }
+    } catch (e) {
+      print('❌ Erro ao obter versão do app: $e');
+    }
   }
 
   @override
@@ -198,7 +215,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _buildSettingsSection(
                       'Sobre',
                       [
-                        _buildInfoItem('Versão do App', '1.0.0'),
+                        _buildInfoItem('Versão do App', _appVersion.isEmpty ? '-' : _appVersion),
                         _buildInfoItem('Banco de Dados', 'v2.1'),
                         _buildInfoItem('Última Sincronização', 'Agora'),
                         _buildActionItem(
