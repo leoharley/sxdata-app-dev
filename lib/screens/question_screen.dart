@@ -16,6 +16,7 @@ import '../providers/auth_provider.dart';
 import '../services/location_service.dart';
 import '../services/platform_caps.dart';
 import '../services/web_media_store/web_media_store.dart';
+import '../utils/phone_format.dart';
 import '../widgets/location_required_dialog.dart';
 
 class QuestionScreen extends StatefulWidget {
@@ -507,10 +508,16 @@ class _QuestionScreenState extends State<QuestionScreen>
 
     final questionState = formProvider.getQuestionState(originalIndex);
     final isRequired = questionState?.required ?? question.isRequired;
-    if (!isRequired) return true;
-
     final response = formProvider.getResponse(question.id);
-    return response != null && response.toString().trim().isNotEmpty;
+    final filled = response != null && response.toString().trim().isNotEmpty;
+
+    // Telefone pela metade não passa, mesmo em pergunta opcional
+    if (filled && question.questionType.toLowerCase().trim() == 'phone') {
+      return isValidPhone(response.toString());
+    }
+
+    if (!isRequired) return true;
+    return filled;
   }
 
   int _getOriginalIndex(Question question, FormProvider formProvider) {
@@ -767,6 +774,21 @@ class _QuestionScreenState extends State<QuestionScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Por favor, responda esta questão obrigatória'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+    }
+
+    // Telefone pela metade não passa, mesmo em pergunta opcional
+    if (currentQuestion.questionType.toLowerCase().trim() == 'phone') {
+      final response = formProvider.getResponse(currentQuestion.id);
+      final text = response?.toString().trim() ?? '';
+      if (text.isNotEmpty && !isValidPhone(text)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Informe o telefone com DDD'),
             backgroundColor: Colors.red,
           ),
         );

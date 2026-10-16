@@ -503,6 +503,7 @@ class FormProvider with ChangeNotifier {
       switch (type.toLowerCase().trim()) {
         case 'text':
         case 'textarea':
+        case 'phone':
           response = QuestionResponse(
             questionId: questionId,
             responseText: value?.toString(),

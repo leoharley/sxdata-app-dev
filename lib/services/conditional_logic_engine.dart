@@ -443,6 +443,7 @@ class ConditionalLogicEngine {
       case 'text':
       case 'textarea':
       case 'email':
+      case 'phone':
         final isEmpty = response is! String || response.trim().isEmpty;
         print('   - Resultado: ${isEmpty ? "VAZIO" : "PREENCHIDO"}');
         return isEmpty;

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/question.dart';
+import '../utils/phone_format.dart';
 
 class QuestionWidget extends StatefulWidget {
   final Question question;
@@ -62,6 +63,9 @@ class _QuestionWidgetState extends State<QuestionWidget> {
       case 'number':
         print('🔢 Building number input');
         return _buildNumberInput();
+      case 'phone':
+        print('📞 Building phone input');
+        return _buildPhoneInput();
       case 'date':
         print('📅 Building date input');
         return _buildDateInput();
@@ -353,6 +357,60 @@ Widget _buildTextInput() {
         validator: widget.question.isRequired
             ? (value) => value?.isEmpty == true ? 'Campo obrigatório' : null
             : null,
+      ),
+    );
+  }
+
+  /// Telefone com DDD, mascarado enquanto digita: (00) 00000-0000.
+  /// O valor guardado é o texto já formatado; a tela de perguntas não deixa
+  /// avançar com o número pela metade (ver _canAdvanceFromCurrentQuestion).
+  Widget _buildPhoneInput() {
+    return Container(
+      decoration: BoxDecoration(
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: TextFormField(
+        initialValue: formatPhone(widget.initialValue?.toString() ?? ''),
+        onChanged: (value) => widget.onChanged(value),
+        keyboardType: TextInputType.phone,
+        inputFormatters: [PhoneInputFormatter()],
+        autovalidateMode: AutovalidateMode.onUserInteraction,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 18),
+        decoration: InputDecoration(
+          hintText: '(00) 00000-0000',
+          hintStyle: TextStyle(color: Colors.grey.shade500),
+          prefixIcon: Icon(Icons.phone, color: Colors.grey.shade600),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Colors.grey),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFF8FAE5D), width: 2),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide(color: Colors.grey.shade300),
+          ),
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+        ),
+        validator: (value) {
+          final text = value ?? '';
+          if (text.isEmpty) {
+            return widget.question.isRequired ? 'Campo obrigatório' : null;
+          }
+          return isValidPhone(text) ? null : 'Informe o telefone com DDD';
+        },
       ),
     );
   }

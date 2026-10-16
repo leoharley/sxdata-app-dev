@@ -2238,6 +2238,7 @@ Future<void> _requestPermissions() async {
         return const Color(0xFF8FAE5D);
       case 'text':
       case 'textarea':
+      case 'phone':
         return Colors.orange;
       case 'number':
         return Colors.purple;
@@ -2265,6 +2266,8 @@ Future<void> _requestPermissions() async {
         return 'Data';
       case 'datetime':
         return 'Data/Hora';
+      case 'phone':
+        return 'Telefone';
       default:
         return type.toUpperCase();
     }
