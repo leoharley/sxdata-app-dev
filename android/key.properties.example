@@ -1,0 +1,13 @@
+# Modelo da assinatura da Play Store.
+#
+# Copie para android/key.properties (mesma pasta) e preencha. O key.properties
+# e a keystore estao no .gitignore: NUNCA commite nenhum dos dois.
+#
+# Use a MESMA keystore de upload do app que ja esta na Play Store. Uma keystore
+# diferente faz a Play Console recusar o pacote.
+
+storePassword=SENHA_DA_KEYSTORE
+keyPassword=SENHA_DA_CHAVE
+keyAlias=ALIAS_DA_CHAVE
+# Caminho da keystore, relativo a android/app/ ou absoluto (use barras /)
+storeFile=C:/caminho/para/upload-keystore.jks
