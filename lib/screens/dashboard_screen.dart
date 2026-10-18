@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -24,6 +25,8 @@ import 'stats_graphs_screen.dart';
 import 'applicators_map_screen.dart';
 import '../services/photo_storage_service.dart';
 import 'question_analysis_screen.dart';
+import '../services/api_service.dart';
+import '../utils/ambiente.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -439,21 +442,11 @@ class _DashboardScreenState extends State<DashboardScreen>
                           ),
                         ),
 
-                        // Versão do aplicativo
+                        // Versão do aplicativo (no web, também o ambiente)
                         SliverToBoxAdapter(
                           child: Padding(
                             padding: const EdgeInsets.symmetric(vertical: 20),
-                            child: Center(
-                              child: Text(
-                                _appVersion.isEmpty
-                                    ? ''
-                                    : 'Versão $_appVersion',
-                                style: const TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
+                            child: Center(child: _buildRodapeVersao()),
                           ),
                         ),
                       ],
@@ -465,6 +458,35 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
         );
       },
+    );
+  }
+
+  /// "Versão X". No web app acrescenta o ambiente (Produção, Evolução...),
+  /// com um ponto colorido, para não confundir as duas versões publicadas.
+  Widget _buildRodapeVersao() {
+    const estilo = TextStyle(color: Colors.grey, fontSize: 12);
+    if (_appVersion.isEmpty) {
+      return const Text('', style: estilo);
+    }
+    if (!kIsWeb) {
+      return Text('Versão $_appVersion', style: estilo);
+    }
+
+    final ambiente = Ambiente.daApi(ApiService.baseUrl);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 7,
+          height: 7,
+          decoration: BoxDecoration(
+            color: ambiente.cor,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text('${ambiente.nome} · Versão $_appVersion', style: estilo),
+      ],
     );
   }
 
