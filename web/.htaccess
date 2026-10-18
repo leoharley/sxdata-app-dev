@@ -4,6 +4,9 @@
 # está aqui para build/web, então a configuração acompanha toda publicação.
 # Mantê-lo só em build/web faria um `flutter clean` apagar sem aviso.
 
+# A raiz do painel abre index.php; aqui a página de entrada é a do app.
+DirectoryIndex index.html
+
 # ---------------------------------------------------------------------------
 # Rotas internas do app (SPA): qualquer caminho que não exista como arquivo
 # real volta para o index.html, senão recarregar numa rota dá 404.
