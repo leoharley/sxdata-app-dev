@@ -4,97 +4,10 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/questionnaire.dart';
 import '../models/form_response.dart';
-import '../models/stratification.dart';
 
 class LocalStorageService {
   static const String _questionnairesKey = 'questionnaires';
   static const String _formsKey = 'form_responses';
-  static const String _stratificationKeyPrefix = 'stratification_';
-
-  // ---------------------------------------------------------------------------
-  // Estratificação (cache offline)
-  //
-  // A estratificação vinha só do servidor, então em campo sem sinal o painel
-  // sumia e o aplicador via um erro de rede cru. Guardamos a última versão
-  // baixada por questionário, com a data, para exibir offline deixando claro
-  // que os números podem estar defasados.
-  // ---------------------------------------------------------------------------
-
-  static Future<void> saveStratification(
-      int questionnaireId, List<StratificationData> data) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final payload = jsonEncode({
-        'cached_at': DateTime.now().toIso8601String(),
-        // Guardado no mesmo formato do envelope da API para voltar pelo
-        // mesmo caminho de parsing (listFromEnvelope).
-        'data': {
-          'questionnaire_id': questionnaireId,
-          // Preserva a visão (individual/geral) para a tela offline não
-          // trocar o rótulo das metas.
-          'view_mode': data.isEmpty ? 'geral' : data.first.viewMode,
-          'stratifications': data.map((s) => s.toJson()).toList(),
-        },
-      });
-      await prefs.setString(
-          '$_stratificationKeyPrefix$questionnaireId', payload);
-      print('💾 Estratificação do questionário $questionnaireId salva no cache');
-    } catch (e) {
-      // Cache é best-effort: falhar aqui não pode derrubar o fluxo online.
-      print('⚠️ Erro ao salvar estratificação no cache: $e');
-    }
-  }
-
-  /// Retorna a estratificação em cache e quando ela foi baixada,
-  /// ou null se nunca houve download bem-sucedido para este questionário.
-  static Future<({List<StratificationData> data, DateTime cachedAt})?>
-      getStratification(int questionnaireId) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final jsonString =
-          prefs.getString('$_stratificationKeyPrefix$questionnaireId');
-      if (jsonString == null) {
-        print('ℹ️ Sem estratificação em cache para o questionário $questionnaireId');
-        return null;
-      }
-
-      final map = jsonDecode(jsonString) as Map<String, dynamic>;
-      final rawData = Map<String, dynamic>.from(map['data'] as Map);
-
-      // Formato atual: envelope {questionnaire_id, stratifications:[...]}.
-      // Formato antigo (caches gravados antes da correção do envelope):
-      // uma única estratificação solta na raiz.
-      final List<StratificationData> data =
-          rawData.containsKey('stratifications')
-              ? StratificationData.listFromEnvelope(rawData)
-              : [StratificationData.fromJson(rawData)];
-      final cachedAt =
-          DateTime.tryParse(map['cached_at']?.toString() ?? '') ?? DateTime.now();
-
-      print('📖 Estratificação do questionário $questionnaireId lida do cache '
-          '(baixada em $cachedAt)');
-      return (data: data, cachedAt: cachedAt);
-    } catch (e) {
-      print('⚠️ Erro ao ler estratificação do cache: $e');
-      return null;
-    }
-  }
-
-  static Future<void> clearStratifications() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final keys = prefs
-          .getKeys()
-          .where((k) => k.startsWith(_stratificationKeyPrefix))
-          .toList();
-      for (final key in keys) {
-        await prefs.remove(key);
-      }
-      print('🗑️ ${keys.length} estratificação(ões) removida(s) do cache');
-    } catch (e) {
-      print('❌ Erro ao limpar estratificações: $e');
-    }
-  }
 
   // Questionnaires
   static Future<void> saveQuestionnaires(List<Questionnaire> questionnaires) async {
@@ -686,7 +599,6 @@ class LocalStorageService {
     try {
       await clearQuestionnaires();
       await clearFormResponses();
-      await clearStratifications();
       print('🧹 Todo o storage local limpo');
     } catch (e) {
       print('❌ Erro ao limpar storage: $e');

@@ -7,7 +7,6 @@ import 'package:permission_handler/permission_handler.dart';
 import '../models/questionnaire.dart';
 import '../models/question.dart';
 import '../providers/form_provider.dart';
-import '../providers/stratification_provider.dart';
 import '../widgets/question_widgets.dart';
 import 'photo_capture_screen.dart';
 import 'form_completed_screen.dart';
@@ -659,10 +658,6 @@ class _QuestionScreenState extends State<QuestionScreen>
                       print('📝 === RESPOSTA ALTERADA ===');
                       print('📝 Questão ${question.id}: "$value"');
 
-                      // Capturar opção recém-selecionada antes de atualizar o estado
-                      final justSelected =
-                          _getJustSelectedOption(question.id, value);
-
                       setState(() {
                         _currentAnswers[question.id] = value;
                       });
@@ -675,11 +670,6 @@ class _QuestionScreenState extends State<QuestionScreen>
                       );
 
                       print('📝 Resposta salva, aguardando reavaliação...');
-
-                      // Verificar cota de estratificação (alerta não bloqueante)
-                      if (justSelected != null) {
-                        _checkStratificationQuota(question.id, justSelected);
-                      }
                     },
                   ),
                 ],
@@ -1066,51 +1056,6 @@ class _QuestionScreenState extends State<QuestionScreen>
         builder: (context) => FormCompletedScreen(
           questionnaire: widget.questionnaire,
         ),
-      ),
-    );
-  }
-
-  /// Retorna a string da opção recém-selecionada comparando com o estado
-  /// anterior em [_currentAnswers]. Para radio retorna o valor diretamente;
-  /// para checkbox retorna o item adicionado na última interação.
-  String? _getJustSelectedOption(int questionId, dynamic newValue) {
-    if (newValue == null) return null;
-
-    if (newValue is String) {
-      return newValue.isNotEmpty ? newValue : null;
-    }
-
-    if (newValue is List) {
-      final prev = _currentAnswers[questionId];
-      final prevList = (prev is List) ? prev.cast<String>() : <String>[];
-      final newList = newValue.cast<String>();
-      final added = newList.where((v) => !prevList.contains(v)).toList();
-      return added.isNotEmpty ? added.first : null;
-    }
-
-    return null;
-  }
-
-  /// Exibe um SnackBar de alerta (não bloqueante) quando a cota do estrato
-  /// selecionado já foi atingida, conforme dados de estratificação carregados.
-  void _checkStratificationQuota(int questionId, String optionValue) {
-    final stratProvider =
-        Provider.of<StratificationProvider>(context, listen: false);
-    if (!stratProvider.hasStratification) return;
-
-    final alert = stratProvider.getQuotaAlert(questionId, optionValue);
-    if (alert == null) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Atenção: A cota para ${alert['optionLabel']} na categoria '
-          '${alert['categoryName']} já foi atingida '
-          '(${alert['currentCount']}/${alert['targetQuota']}).',
-        ),
-        backgroundColor: Colors.orange.shade700,
-        duration: const Duration(seconds: 4),
-        behavior: SnackBarBehavior.floating,
       ),
     );
   }

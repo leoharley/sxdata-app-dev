@@ -5,7 +5,6 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/form_response.dart';
-import '../models/stratification.dart';
 
 class ApiService {
   // Producao por padrao. Para apontar outro ambiente, passe no build:
@@ -1332,71 +1331,6 @@ class ApiService {
     } catch (e) {
       print('❌ Erro de conectividade: $e');
       return false;
-    }
-  }
-
-  /// Busca a estratificação de um questionário.
-  ///
-  /// [questionnaireId] é o ID DO QUESTIONÁRIO, nunca o stratification_id nem
-  /// um id de coleta/resposta. São valores distintos e fáceis de confundir:
-  /// a estratificação de id 20 pertence ao questionário 6, e chamar
-  /// /api/stratification/20 devolve 200 com "stratifications":[].
-  ///
-  /// Retorna a LISTA de estratificações do questionário; lista vazia quer
-  /// dizer "nenhuma configurada". Erros de rede/HTTP/parse são lançados —
-  /// quem chama precisa distinguir os dois casos na tela.
-  ///
-  /// O token vai no header Authorization (via [_getHeaders]) e é ele que faz
-  /// o servidor decidir a visão: token de aplicador recebe SOMENTE as metas
-  /// dele (data.view_mode = "individual"); supervisor/admin recebe o geral.
-  /// Sem token vem a visão geral, o comportamento antigo.
-  ///
-  /// O app NUNCA envia ?applied_by: para um aplicador o servidor o ignora
-  /// por segurança, e o filtro é coisa das telas de supervisão no painel.
-  static Future<List<StratificationData>> getStratification(
-      int questionnaireId) async {
-    try {
-      final url = '$baseUrl/stratification/$questionnaireId';
-      final headers = await _getHeaders();
-      print('📊 GET $url');
-      // Não logar o valor do token; só se ele foi enviado.
-      print('📊 Authorization enviado: ${headers.containsKey('Authorization')}');
-
-      final response = await http
-          .get(Uri.parse(url), headers: headers)
-          .timeout(const Duration(seconds: 15));
-
-      print('📊 Status: ${response.statusCode}');
-      print('📊 Body: ${response.body}');
-
-      if (response.statusCode == 200) {
-        final responseData =
-            jsonDecode(response.body) as Map<String, dynamic>;
-        if (responseData['success'] == true) {
-          final data = responseData['data'];
-          if (data == null) {
-            print('📊 Resposta success=true mas data=null');
-            return const [];
-          }
-          // O payload fica em data["stratifications"] (lista), NÃO na raiz.
-          final envelope = Map<String, dynamic>.from(data as Map);
-          final list = StratificationData.listFromEnvelope(envelope);
-          print('📊 Estratificações recebidas: ${list.length} '
-              '(view_mode: ${envelope['view_mode'] ?? 'geral'})');
-          return list;
-        }
-        print('📊 Resposta success=${responseData['success']} - message: ${responseData['message']}');
-        throw Exception('API retornou success=false: ${responseData['message']}');
-      } else if (response.statusCode == 401) {
-        print('📊 Token não autorizado (401)');
-        throw Exception('Token não autorizado (401)');
-      } else {
-        print('📊 Erro HTTP ${response.statusCode}');
-        throw Exception('Erro HTTP ${response.statusCode}');
-      }
-    } catch (e) {
-      print('❌ Estratificação indisponível: $e');
-      rethrow;
     }
   }
 }
