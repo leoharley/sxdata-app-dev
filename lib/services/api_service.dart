@@ -53,6 +53,8 @@ class ApiService {
 
   static Future<Map<String, dynamic>> verifyToken(String token) async {
     try {
+      // Sem prazo, uma rede conectada mas sem internet deixava a chamada
+      // pendurada; estourando, o app segue com a sessão do aparelho.
       final response = await http.get(
         Uri.parse('$baseUrl/auth/verify'),
         headers: {
@@ -60,7 +62,7 @@ class ApiService {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
         },
-      );
+      ).timeout(const Duration(seconds: 10));
 
       final responseData = jsonDecode(response.body);
 
@@ -76,10 +78,12 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getQuestionnaires() async {
     try {
+      // Estourando o prazo, o provider cai nos questionários salvos no
+      // aparelho; sem ele o dashboard ficava em "Carregando questionários..."
       final response = await http.get(
         Uri.parse('$baseUrl/questionnaires'),
         headers: await _getHeaders(),
-      );
+      ).timeout(const Duration(seconds: 15));
 
       final responseData = jsonDecode(response.body);
 

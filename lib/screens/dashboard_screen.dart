@@ -142,10 +142,13 @@ class _DashboardScreenState extends State<DashboardScreen>
       context,
       listen: false,
     );
-    await questionnaireProvider.loadQuestionnaires();
-
-    // Carregar formulários pendentes de sincronização
-    await _loadPendingForms();
+    // Em paralelo: as pendentes estão no aparelho e não podem esperar a lista
+    // de questionários voltar do servidor (com sinal fraco, ficavam em
+    // "Verificando..." até a chamada desistir).
+    await Future.wait([
+      questionnaireProvider.loadQuestionnaires(),
+      _loadPendingForms(),
+    ]);
 
     // Carregar estatísticas para supervisores/administradores
     final authProvider = Provider.of<AuthProvider>(context, listen: false);

@@ -156,6 +156,18 @@ flutter:
   assets:
     - assets/images/
 
+  # Roboto embutida (do SDK do Flutter, licença Apache 2.0 em assets/fonts/).
+  # Sem ela, a versão web baixa a fonte de fonts.gstatic.com ao abrir: offline
+  # o texto não aparecia. Com o nome "Roboto", o tema Material já a usa.
+  fonts:
+    - family: Roboto
+      fonts:
+        - asset: assets/fonts/Roboto-Regular.ttf
+        - asset: assets/fonts/Roboto-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Roboto-Bold.ttf
+          weight: 700
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

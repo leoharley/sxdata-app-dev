@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -50,7 +51,10 @@ class AuthProvider with ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
 
       print('📦 Obtendo informações do pacote...');
-      final PackageInfo packageInfo = await PackageInfo.fromPlatform();
+      // Na web isto baixa o version.json: sem prazo, uma rede conectada mas
+      // sem resposta segurava a abertura do app. Estourou, segue sem checar.
+      final PackageInfo packageInfo = await PackageInfo.fromPlatform()
+          .timeout(const Duration(seconds: 5));
 
       // Versão completa: version+buildNumber (ex: 1.0.0+1)
       final String currentVersion = '${packageInfo.version}+${packageInfo.buildNumber}';
@@ -569,9 +573,19 @@ class AuthProvider with ChangeNotifier {
         
         // Tentar carregar dados do usuário salvos localmente primeiro
         await _loadSavedUserData(prefs, userId);
-        
-        // Verificar token com servidor (opcional - só se houver conexão)
-        await _verifyTokenWithServer(token, prefs);
+
+        if (_isAuthenticated) {
+          // Os dados do aparelho bastam para abrir o app. A verificação no
+          // servidor (que renova o token) segue em segundo plano: esperar por
+          // ela deixava o app parado na abertura quando havia rede conectada
+          // mas sem internet de verdade.
+          unawaited(
+            _verifyTokenWithServer(token, prefs).then((_) => notifyListeners()),
+          );
+        } else {
+          // Sem dados locais completos, só o servidor pode restaurar o usuário
+          await _verifyTokenWithServer(token, prefs);
+        }
       } else {
         if (kDebugMode) {
           print('No saved authentication data found');

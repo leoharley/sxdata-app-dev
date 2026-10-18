@@ -234,12 +234,25 @@
           });
         });
 
+        // Guardar o app inteiro no aparelho para abrir sem internet. O
+        // worker do Flutter só baixa 5 arquivos ao instalar; o motor gráfico,
+        // as fontes e as imagens vêm por aqui (tool/patch_service_worker.dart).
+        // Pede a cada abertura: só o que ainda falta é baixado.
+        function guardarParaOffline() {
+          var ativo = navigator.serviceWorker.controller;
+          if (ativo && navigator.onLine !== false) {
+            ativo.postMessage('sxdataPrecache');
+          }
+        }
+
         // Procurar atualização ao abrir e sempre que o app voltar ao primeiro
         // plano — é quando o aplicador costuma reencontrar sinal em campo.
         reg.update();
+        guardarParaOffline();
         document.addEventListener('visibilitychange', function () {
           if (document.visibilityState === 'visible') {
             reg.update();
+            guardarParaOffline();
           }
         });
       });

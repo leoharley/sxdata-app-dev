@@ -26,6 +26,20 @@ class QuestionnaireProvider with ChangeNotifier {
     _isFromCache = false;
     notifyListeners();
 
+    // A lista salva no aparelho aparece na hora; a do servidor a substitui
+    // quando chegar. Com sinal fraco, esperar o servidor deixava o aplicador
+    // olhando "Carregando questionários..." até o prazo da chamada estourar.
+    try {
+      final salvos = await LocalStorageService.getQuestionnaires();
+      if (salvos.isNotEmpty) {
+        _questionnaires = salvos;
+        _isLoading = false;
+        notifyListeners();
+      }
+    } catch (e) {
+      print('⚠️ Cache de questionários ilegível: $e');
+    }
+
     try {
       print('🌐 Attempting to load from server...');
       
