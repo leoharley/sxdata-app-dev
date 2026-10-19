@@ -10,7 +10,6 @@ import 'package:sxdata/models/questionnaire.dart';
 import 'package:sxdata/models/user.dart';
 import 'package:sxdata/providers/auth_provider.dart';
 import 'package:sxdata/providers/form_provider.dart';
-import 'package:sxdata/providers/stratification_provider.dart';
 import 'package:sxdata/screens/question_screen.dart';
 
 /// "Próxima" não avançava na pergunta aberta que aparece por lógica condicional.
@@ -126,7 +125,6 @@ void main() {
       providers: [
         ChangeNotifierProvider(create: (_) => FormProvider()),
         ChangeNotifierProvider.value(value: auth),
-        ChangeNotifierProvider(create: (_) => StratificationProvider()),
       ],
       child: MaterialApp(
         home: QuestionScreen(questionnaire: questionario(), currentQuestionIndex: 0),
