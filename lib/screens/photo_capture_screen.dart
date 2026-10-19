@@ -19,6 +19,20 @@ class PhotoCaptureScreen extends StatefulWidget {
 
   const PhotoCaptureScreen({super.key, required this.questionnaire});
 
+  /// Questionário com "Requer foto" e formulário sem foto?
+  ///
+  /// Na edição não se exige foto nova: o entrevistado já não está presente,
+  /// e vale a foto da entrevista original.
+  @visibleForTesting
+  static bool fotoObrigatoriaFaltando({
+    required bool requiresPhoto,
+    required bool isEditMode,
+    String? photoPath,
+  }) =>
+      requiresPhoto &&
+      !isEditMode &&
+      (photoPath == null || photoPath.trim().isEmpty);
+
   @override
   State<PhotoCaptureScreen> createState() => _PhotoCaptureScreenState();
 }
@@ -144,8 +158,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                             ),
                             const SizedBox(height: 5),
                             Text(
-                              widget.questionnaire.requiresPhoto 
-                                  ? 'Adicione uma foto para validar a coleta'
+                              widget.questionnaire.requiresPhoto
+                                  ? 'Foto obrigatória: tire a foto para finalizar'
                                   : 'Foto opcional para evidência',
                               style: const TextStyle(
                                 fontSize: 14,
@@ -564,7 +578,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
   }
 
   Widget _buildActionButtons() {
-    final canFinish = !widget.questionnaire.requiresPhoto || _hasPhoto1;
+    final formProvider = Provider.of<FormProvider>(context, listen: false);
+    // Cinza quando falta a foto obrigatória. Continua tocável: o toque
+    // explica o motivo em vez de o botão simplesmente não responder.
+    final canFinish = !PhotoCaptureScreen.fotoObrigatoriaFaltando(
+      requiresPhoto: widget.questionnaire.requiresPhoto,
+      isEditMode: formProvider.isEditMode,
+      photoPath: formProvider.currentForm?.photoPath,
+    );
 
     return Padding(
       padding: const EdgeInsets.only(top: 20),
@@ -985,17 +1006,23 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
       return;
     }
 
-    // Verificar se foto é obrigatória
-   /* if (widget.questionnaire.requiresPhoto && _capturedPhoto == null) {
-      print('❌ Foto obrigatória não capturada');
+    // "Requer foto" no painel: não finaliza sem foto. A referência é a foto
+    // do FORMULÁRIO (vale no Android e na web), não o estado desta tela.
+    final fotoProvider = Provider.of<FormProvider>(context, listen: false);
+    if (PhotoCaptureScreen.fotoObrigatoriaFaltando(
+      requiresPhoto: widget.questionnaire.requiresPhoto,
+      isEditMode: fotoProvider.isEditMode,
+      photoPath: fotoProvider.currentForm?.photoPath,
+    )) {
+      print('❌ Foto obrigatória não registrada');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Foto é obrigatória para este questionário'),
+          content: Text('Este questionário exige foto. Tire a foto para finalizar.'),
           backgroundColor: Colors.red,
         ),
       );
       return;
-    } */
+    }
 
     // Localização obrigatória: não deixa finalizar sem coordenadas gravadas.
     // Tenta capturar em laço, explicando a falha e oferecendo nova tentativa.
