@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
+import '../services/local_storage_service.dart';
 import '../services/platform_caps.dart';
 import '../services/web_media_store/web_media_store.dart';
 
@@ -104,25 +105,32 @@ class PhotoStorageService {
       final List<dynamic> photosList = jsonDecode(data);
       final List<Map<String, dynamic>> photosMetadata = photosList.cast<Map<String, dynamic>>();
       
-      // Filtrar apenas fotos pendentes e verificar se arquivo ainda existe
+      // Pendentes E com falha de envio ('error'), desde que o arquivo exista.
+      //
+      // Antes só 'pending' era reenviada: uma foto que falhasse uma vez
+      // (sem sinal, erro do servidor) nunca mais subia. E como a trava de
+      // envio contava 'error' como pendente, ela segurava as coletas para
+      // sempre. Arquivo que sumiu do aparelho vira 'lost': não há o que
+      // enviar, e ele não pode prender coleta nenhuma.
       final List<Map<String, dynamic>> pendingPhotos = [];
-      
+      bool changed = false;
+
       for (final photo in photosMetadata) {
-        if (photo['syncStatus'] == 'pending') {
-          final File photoFile = File(photo['localPath']);
-          if (await photoFile.exists()) {
-            pendingPhotos.add(photo);
-          } else {
-            print('⚠️ Foto não encontrada: ${photo['localPath']}');
-            // Marcar como erro se arquivo não existe
-            photo['syncStatus'] = 'error';
-            photo['errorMessage'] = 'Arquivo não encontrado';
-          }
+        final status = photo['syncStatus'];
+        if (status != 'pending' && status != 'error') continue;
+
+        final File photoFile = File(photo['localPath']);
+        if (await photoFile.exists()) {
+          pendingPhotos.add(photo);
+        } else {
+          print('⚠️ Foto não encontrada: ${photo['localPath']}');
+          photo['syncStatus'] = 'lost';
+          photo['errorMessage'] = 'Arquivo não encontrado no aparelho';
+          changed = true;
         }
       }
-      
-      // Atualizar metadados se houver mudanças
-      if (pendingPhotos.length != photosMetadata.where((p) => p['syncStatus'] == 'pending').length) {
+
+      if (changed) {
         await prefs.setString(_photosMetadataKey, jsonEncode(photosMetadata));
       }
       
@@ -133,6 +141,53 @@ class PhotoStorageService {
       print('❌ Erro ao obter fotos pendentes: $e');
       return [];
     }
+  }
+
+  /// Nomes das fotos que ainda precisam subir (arquivo no aparelho e envio
+  /// pendente ou com falha). Usado para segurar só a coleta que as cita.
+  static Future<Set<String>> pendingFilenames() async {
+    if (!PlatformCaps.hasFileSystem) return <String>{};
+    final pending = await getPendingPhotos();
+    return pending.map((p) => p['filename'].toString()).toSet();
+  }
+
+  /// Devolve à fila uma foto que o servidor diz não ter recebido.
+  /// Retorna true se o arquivo ainda está no aparelho (vai subir de novo).
+  static Future<bool> requeue(String filename) async {
+    if (!PlatformCaps.hasFileSystem) return false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? data = prefs.getString(_photosMetadataKey);
+      if (data == null) return false;
+
+      final photosMetadata =
+          (jsonDecode(data) as List<dynamic>).cast<Map<String, dynamic>>();
+      for (final photo in photosMetadata) {
+        if (photo['filename'] != filename) continue;
+        if (!await File(photo['localPath']).exists()) return false;
+        photo['syncStatus'] = 'pending';
+        photo['errorMessage'] = 'Servidor não tinha o arquivo; reenviando';
+        await prefs.setString(_photosMetadataKey, jsonEncode(photosMetadata));
+        print('📸 $filename de volta à fila de envio');
+        return true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Erro ao reenfileirar foto $filename: $e');
+      return false;
+    }
+  }
+
+  static Future<void> _renameInMetadata(String oldName, String newName) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? data = prefs.getString(_photosMetadataKey);
+    if (data == null) return;
+    final photosMetadata =
+        (jsonDecode(data) as List<dynamic>).cast<Map<String, dynamic>>();
+    for (final photo in photosMetadata) {
+      if (photo['filename'] == oldName) photo['filename'] = newName;
+    }
+    await prefs.setString(_photosMetadataKey, jsonEncode(photosMetadata));
   }
 
   /// Atualiza o status de sincronização de uma foto
@@ -493,10 +548,22 @@ class PhotoStorageService {
           // Enviar foto usando ApiService
           final Map<String, dynamic> result = await ApiService.uploadPhoto(photoFile);
           
-          if (result.containsKey('filename') || result.containsKey('file_name') || 
+          if (result.containsKey('filename') || result.containsKey('file_name') ||
               result.containsKey('name') || result.containsKey('path')) {
-            // Upload bem-sucedido
-            await updatePhotoSyncStatus(filename, 'synced');
+            // Upload bem-sucedido. Se o servidor gravou com outro nome, as
+            // coletas passam a citar esse nome — senão o painel não acha a foto.
+            final serverName =
+                (result['filename'] ?? result['file_name'])?.toString();
+            if (serverName != null &&
+                serverName.isNotEmpty &&
+                serverName != filename) {
+              await LocalStorageService.replaceMediaReference(
+                  filename, serverName);
+              await _renameInMetadata(filename, serverName);
+              await updatePhotoSyncStatus(serverName, 'synced');
+            } else {
+              await updatePhotoSyncStatus(filename, 'synced');
+            }
             syncedCount++;
             print('✅ Foto $filename sincronizada com sucesso');
             

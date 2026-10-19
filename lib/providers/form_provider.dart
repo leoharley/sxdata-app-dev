@@ -635,8 +635,9 @@ class FormProvider with ChangeNotifier {
     }
   }
 
-  /// Define a foto
-  void setPhoto(String photoPath) {
+  /// Define a foto. Retorna false se não há formulário para anexá-la: a tela
+  /// precisa avisar, senão o aplicador acha que a foto foi junto.
+  bool setPhoto(String photoPath) {
     print('📸 Definindo foto: $photoPath');
 
     if (_currentForm != null) {
@@ -644,16 +645,32 @@ class FormProvider with ChangeNotifier {
         _currentForm = _currentForm!.copyWith(photoPath: photoPath);
         print('✅ Foto definida');
         notifyListeners();
+        return true;
       } catch (e) {
         print('❌ Erro ao definir foto: $e');
       }
     } else {
       print('⚠️ Tentativa de definir foto sem formulário ativo');
     }
+    return false;
   }
 
-  /// Define a segunda foto
-  void setPhoto2(String photoPath2) {
+  /// Tira a foto do formulário (o aplicador vai refazê-la). Sem isso a coleta
+  /// seguia citando a foto descartada, que nunca chegaria ao painel.
+  void clearPhoto() {
+    if (_currentForm == null) return;
+    _currentForm = _currentForm!.copyWith(clearPhotoPath: true);
+    notifyListeners();
+  }
+
+  void clearPhoto2() {
+    if (_currentForm == null) return;
+    _currentForm = _currentForm!.copyWith(clearPhotoPath2: true);
+    notifyListeners();
+  }
+
+  /// Define a segunda foto. Retorna false se não há formulário para anexá-la.
+  bool setPhoto2(String photoPath2) {
     print('📸 Definindo segunda foto: $photoPath2');
 
     if (_currentForm != null) {
@@ -661,12 +678,14 @@ class FormProvider with ChangeNotifier {
         _currentForm = _currentForm!.copyWith(photoPath2: photoPath2);
         print('✅ Segunda foto definida');
         notifyListeners();
+        return true;
       } catch (e) {
         print('❌ Erro ao definir segunda foto: $e');
       }
     } else {
       print('⚠️ Tentativa de definir segunda foto sem formulário ativo');
     }
+    return false;
   }
 
   /// Define o caminho do áudio gravado
@@ -803,6 +822,7 @@ class FormProvider with ChangeNotifier {
 
   /// Submete o formulário com foto
   Future<bool> submitFormWithPhoto(String? uploadedPhotoFilename) async {
+    _submitError = null;
     print('📤 ========================================');
     print('📤 === INICIANDO SUBMISSÃO DO FORMULÁRIO ===');
     print('📤 ========================================');
@@ -907,19 +927,20 @@ class FormProvider with ChangeNotifier {
         if (photoPath.contains('/') && !photoPath.startsWith('http')) {
           print('📸 Foto 1 local detectada, salvando offline...');
 
-          try {
-            final String? offlineFilename = await savePhotoOffline(photoPath, photoType: 'photo1');
-            if (offlineFilename != null) {
-              finalPhotoFilename = offlineFilename;
-              print('✅ Foto 1 salva offline como: $offlineFilename');
-            } else {
-              print('⚠️ Falha ao salvar foto 1 offline, usando caminho original');
-              finalPhotoFilename = photoPath;
-            }
-          } catch (e) {
-            print('❌ Erro ao salvar foto 1 offline: $e');
-            finalPhotoFilename = photoPath; // Fallback para caminho original
+          // Sem a cópia na fila de envio a foto nunca sobe. Antes o
+          // formulário seguia com o caminho do aparelho em photo_path: a
+          // coleta chegava ao painel citando um arquivo que não existe lá.
+          // Agora não finaliza; o aplicador tenta de novo, nada se perde.
+          final String? offlineFilename =
+              await savePhotoOffline(photoPath, photoType: 'photo1');
+          if (offlineFilename == null) {
+            _submitError = 'Não foi possível guardar a foto no aparelho. '
+                'Tente finalizar de novo.';
+            print('❌ Foto 1 não foi para a fila de envio; finalização abortada');
+            return false;
           }
+          finalPhotoFilename = offlineFilename;
+          print('✅ Foto 1 salva offline como: $offlineFilename');
         } else {
           // Já é um filename do servidor ou offline
           print('📸 Foto 1 já processada (filename): $photoPath');
@@ -941,19 +962,16 @@ class FormProvider with ChangeNotifier {
         if (photoPath2.contains('/') && !photoPath2.startsWith('http')) {
           print('📸 Foto 2 local detectada, salvando offline...');
 
-          try {
-            final String? offlineFilename2 = await savePhotoOffline(photoPath2, photoType: 'photo2');
-            if (offlineFilename2 != null) {
-              finalPhotoFilename2 = offlineFilename2;
-              print('✅ Foto 2 salva offline como: $offlineFilename2');
-            } else {
-              print('⚠️ Falha ao salvar foto 2 offline, usando caminho original');
-              finalPhotoFilename2 = photoPath2;
-            }
-          } catch (e) {
-            print('❌ Erro ao salvar foto 2 offline: $e');
-            finalPhotoFilename2 = photoPath2; // Fallback para caminho original
+          final String? offlineFilename2 =
+              await savePhotoOffline(photoPath2, photoType: 'photo2');
+          if (offlineFilename2 == null) {
+            _submitError = 'Não foi possível guardar a segunda foto no '
+                'aparelho. Tente finalizar de novo.';
+            print('❌ Foto 2 não foi para a fila de envio; finalização abortada');
+            return false;
           }
+          finalPhotoFilename2 = offlineFilename2;
+          print('✅ Foto 2 salva offline como: $offlineFilename2');
         } else {
           // Já é um filename do servidor ou offline
           print('📸 Foto 2 já processada (filename): $photoPath2');
@@ -1379,6 +1397,15 @@ class FormProvider with ChangeNotifier {
               result.containsKey('filename') ||
               result.containsKey('file_name') ||
               result.containsKey('path')) {
+            // Gravado com outro nome (já havia um arquivo diferente com
+            // esse): as coletas passam a citar o nome do servidor.
+            final serverName = result['filename']?.toString();
+            if (serverName != null &&
+                serverName.isNotEmpty &&
+                serverName != filename) {
+              await LocalStorageService.replaceMediaReference(
+                  filename, serverName);
+            }
             await WebMediaStore.delete(filename);
             synced++;
             print('✅ $kind $filename sincronizado e removido do IndexedDB');
@@ -1504,6 +1531,11 @@ class FormProvider with ChangeNotifier {
   String? _lastSyncError;
   String? get lastSyncError => _lastSyncError;
 
+  /// Motivo da última finalização recusada (ex.: a foto não foi para a fila
+  /// de envio), para a tela explicar em vez do genérico "Erro ao salvar".
+  String? _submitError;
+  String? get submitError => _submitError;
+
   /// Reenvia UMA coleta específica, mesmo já confirmada.
   ///
   /// Seguro por causa do client_id: o backend reconhece a coleta pela chave
@@ -1568,6 +1600,109 @@ class FormProvider with ChangeNotifier {
     }
   }
 
+  /// Mídias de [form] que ainda estão na fila de envio ([pending]).
+  ///
+  /// A versão web grava o áudio em partes (audio_web_<sessão>_p<n>) e a
+  /// coleta cita só a primeira: qualquer parte pendente da mesma sessão
+  /// também segura a coleta.
+  @visibleForTesting
+  static List<String> pendingMediaOfForm(
+      FormResponse form, Set<String> pending) {
+    if (pending.isEmpty) return const [];
+    final out = <String>[];
+    for (final foto in [form.photoPath, form.photoPath2]) {
+      if (foto != null && foto.isNotEmpty && pending.contains(foto)) {
+        out.add(foto);
+      }
+    }
+    final audio = form.audioPath;
+    if (audio != null && audio.isNotEmpty) {
+      final sessao =
+          RegExp(r'^(audio_web_[A-Za-z0-9\-]+)_p\d+\.').firstMatch(audio);
+      final prefixo = sessao != null ? '${sessao.group(1)}_p' : null;
+      for (final p in pending) {
+        if (p == audio || (prefixo != null && p.startsWith(prefixo))) {
+          out.add(p);
+        }
+      }
+    }
+    return out;
+  }
+
+  /// Nomes de tudo o que ainda está na fila de envio do aparelho.
+  Future<Set<String>> _pendingMediaNames() async {
+    final names = <String>{};
+    if (PlatformCaps.hasFileSystem) {
+      names.addAll(await PhotoStorageService.pendingFilenames());
+      final appDocDir = await getApplicationDocumentsDirectory();
+      final audioDir = Directory('${appDocDir.path}/offline_audios');
+      if (await audioDir.exists()) {
+        for (final f in audioDir.listSync().whereType<File>()) {
+          names.add(f.path.split(Platform.pathSeparator).last);
+        }
+      }
+    } else {
+      names.addAll(await WebMediaStore.listPendingFilenames('photo'));
+      names.addAll(await WebMediaStore.listPendingFilenames('audio'));
+    }
+    return names;
+  }
+
+  /// Coletas de versões antigas guardavam o caminho do aparelho em
+  /// photo_path quando a cópia para a fila falhava: a foto nunca subia e o
+  /// painel recebia um nome inexistente. Se o arquivo ainda existe, entra na
+  /// fila agora e a coleta passa a citar o nome que vai subir.
+  Future<List<FormResponse>> _requeueDevicePhotoPaths(
+      List<FormResponse> forms) async {
+    final out = <FormResponse>[];
+    for (final form in forms) {
+      var atualizado = form;
+      for (final tipo in const ['photo1', 'photo2']) {
+        final caminho =
+            tipo == 'photo1' ? atualizado.photoPath : atualizado.photoPath2;
+        if (caminho == null ||
+            !caminho.contains('/') ||
+            caminho.startsWith('http') ||
+            form.id == null) {
+          continue;
+        }
+        final arquivo = File(caminho);
+        if (!await arquivo.exists()) {
+          print('⚠️ Coleta ${form.id}: foto $caminho não está mais no aparelho');
+          continue;
+        }
+        try {
+          final nome = await PhotoStorageService.savePhotoOffline(
+              arquivo, form.id!,
+              photoType: tipo);
+          atualizado = tipo == 'photo1'
+              ? atualizado.copyWith(photoPath: nome)
+              : atualizado.copyWith(photoPath2: nome);
+          print('📸 Coleta ${form.id}: foto do aparelho posta na fila como $nome');
+        } catch (e) {
+          print('❌ Coleta ${form.id}: não foi possível pôr a foto na fila: $e');
+        }
+      }
+      if (!identical(atualizado, form)) {
+        await LocalStorageService.updateFormResponse(atualizado);
+      }
+      out.add(atualizado);
+    }
+    return out;
+  }
+
+  /// O servidor listou mídias que a coleta cita e ele não tem. Põe de volta
+  /// na fila as que o aparelho ainda tiver. true se alguma vai subir de novo.
+  Future<bool> _requeueMissingMedia(dynamic missing) async {
+    if (missing is! List || missing.isEmpty) return false;
+    print('⚠️ Servidor sem a(s) mídia(s): $missing');
+    var algumaVolta = false;
+    for (final nome in missing.map((m) => m.toString())) {
+      if (await PhotoStorageService.requeue(nome)) algumaVolta = true;
+    }
+    return algumaVolta;
+  }
+
   Future<int> syncPendingForms() async {
     print('🔄 === SINCRONIZAÇÃO COMPLETA (FORMULÁRIOS + FOTOS) ===');
     print('🔄 Timestamp: ${DateTime.now()}');
@@ -1595,6 +1730,12 @@ class FormProvider with ChangeNotifier {
         // Continua para sincronizar fotos
       }
 
+      // Coletas de versões antigas podem ter guardado o caminho do aparelho
+      // em photo_path (a foto nunca entrou na fila). Põe na fila agora.
+      if (PlatformCaps.hasFileSystem) {
+        pendingForms = await _requeueDevicePhotoPaths(pendingForms);
+      }
+
       // ORDEM IMPORTA: fotos e áudios sobem ANTES dos formulários.
       //
       // Antes o formulário era marcado 'synced' na fase 1 e as mídias só
@@ -1602,7 +1743,7 @@ class FormProvider with ChangeNotifier {
       // da fila de pendentes: sumia do app com foto/áudio nunca enviados.
       print('📸 === PRÉ-FASE: ENVIANDO MÍDIAS ANTES DOS FORMULÁRIOS ===');
       int mediaSyncedCount = 0;
-      bool mediaFailed = false;
+      Set<String> pendingMedia;
       try {
         mediaSyncedCount += await PhotoStorageService.syncPendingPhotos();
         mediaSyncedCount += await syncPendingAudios();
@@ -1610,41 +1751,38 @@ class FormProvider with ChangeNotifier {
           mediaSyncedCount += await syncWebPendingMedia('photo');
           mediaSyncedCount += await syncWebPendingMedia('audio');
         }
-        // Sobrou mídia pendente? Então algum envio falhou.
-        final stats = await PhotoStorageService.getPhotosStats();
-        var pendentes = (stats['pending'] ?? 0) + (stats['error'] ?? 0);
-
-        // Na web os áudios ficam no IndexedDB, fora das estatísticas de
-        // fotos — sem esta checagem a trava deixava passar formulário com
-        // áudio ainda no aparelho.
-        if (!PlatformCaps.hasFileSystem) {
-          pendentes += await WebMediaStore.pendingCount('audio');
-        }
-        if (pendentes > 0) {
-          mediaFailed = true;
-          print('⚠️ $pendentes mídia(s) ainda pendente(s) após o envio');
+        // O que sobrou na fila é o que falhou
+        pendingMedia = await _pendingMediaNames();
+        // Relê as coletas: o envio das mídias pode ter trocado o nome que
+        // elas citam (servidor gravou a foto com outro nome)
+        pendingForms = await getPendingForms();
+        if (pendingMedia.isNotEmpty) {
+          print('⚠️ ${pendingMedia.length} mídia(s) ainda pendente(s) após o envio');
         }
       } catch (e, stackTrace) {
-        mediaFailed = true;
+        // Sem saber o que ficou para trás, nenhuma coleta é enviada
         print('❌ ERRO ao enviar mídias: $e');
         print('📋 Stack trace: $stackTrace');
         _lastSyncError = 'Erro ao enviar fotos/áudios: '
             '${e.toString().replaceAll('Exception: ', '')}';
-      }
-
-      if (mediaFailed) {
-        // Não envia os formulários: eles seriam confirmados e sairiam da
-        // fila enquanto a mídia correspondente continua no aparelho.
-        print('🛑 Envio de formulários adiado: há mídias pendentes');
-        _lastSyncError ??=
-            'Algumas fotos ou áudios não foram enviados. As respostas '
-            'continuam salvas no aparelho — tente novamente com melhor sinal.';
         return mediaSyncedCount;
       }
 
       int formsSyncedCount = 0;
       for (int i = 0; i < pendingForms.length; i++) {
         var form = pendingForms[i];
+
+        // Segura SÓ a coleta cuja foto/áudio ainda está no aparelho: ela
+        // seria confirmada e sairia da fila sem a mídia. Antes uma única foto
+        // com problema segurava todas as coletas do aparelho.
+        final retidas = pendingMediaOfForm(form, pendingMedia);
+        if (retidas.isNotEmpty) {
+          print('🛑 Coleta ${form.id} aguardando mídia: ${retidas.join(', ')}');
+          _lastSyncError ??=
+              'Algumas fotos ou áudios não foram enviados. As respostas '
+              'continuam salvas no aparelho — tente novamente com melhor sinal.';
+          continue;
+        }
 
         try {
           // Coletas salvas por versões anteriores não têm client_id.
@@ -1687,6 +1825,16 @@ class FormProvider with ChangeNotifier {
               _lastSyncError ??=
                   'O servidor respondeu sem confirmar o registro. As '
                   'respostas continuam salvas no aparelho.';
+            } else if (form.id != null &&
+                await _requeueMissingMedia(result['missing_media'])) {
+              // O painel gravou a coleta mas não tem a foto/áudio que ela
+              // cita, e o aparelho ainda tem: a mídia volta para a fila e a
+              // coleta fica pendente. Na próxima sincronização a mídia sobe
+              // e o reenvio (deduplicado por client_id) confirma a coleta.
+              print('📸 Coleta ${form.id} gravada sem a mídia; reenviando');
+              _lastSyncError ??=
+                  'Uma foto não tinha chegado ao painel e será reenviada. '
+                  'Sincronize de novo para concluir.';
             } else if (form.id != null) {
               // duplicated:true é SUCESSO — o backend reconheceu o
               // client_id de um envio anterior e devolveu o id que já

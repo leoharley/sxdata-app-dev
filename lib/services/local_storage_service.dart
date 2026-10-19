@@ -569,6 +569,38 @@ class LocalStorageService {
     }
   }
 
+  /// Troca o nome de uma mídia em todas as coletas que a citam.
+  ///
+  /// O servidor grava a foto com outro nome quando já existe um arquivo com
+  /// o mesmo nome e conteúdo diferente. Sem esta troca a coleta continuaria
+  /// citando o arquivo de outra pessoa (ou um que não existe).
+  static Future<int> replaceMediaReference(String oldName, String newName) =>
+      _withFormsLock(() async {
+        final forms = await getFormResponses();
+        var changed = 0;
+        for (var i = 0; i < forms.length; i++) {
+          final f = forms[i];
+          if (f.photoPath == oldName ||
+              f.photoPath2 == oldName ||
+              f.audioPath == oldName) {
+            // copyWith ignora null: só troca o campo que citava o nome antigo
+            forms[i] = f.copyWith(
+              photoPath: f.photoPath == oldName ? newName : null,
+              photoPath2: f.photoPath2 == oldName ? newName : null,
+              audioPath: f.audioPath == oldName ? newName : null,
+            );
+            changed++;
+          }
+        }
+        if (changed > 0) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(
+              _formsKey, jsonEncode(forms.map((f) => f.toJson()).toList()));
+          print('📸 $oldName → $newName em $changed coleta(s)');
+        }
+        return changed;
+      });
+
   /// Obter um formulário específico por ID
   static Future<FormResponse?> getFormResponseById(int formId) async {
     try {

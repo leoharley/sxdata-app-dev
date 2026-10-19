@@ -125,6 +125,9 @@ class FormResponse {
     DateTime? completedAt,
     DateTime? editedAt,
     List<QuestionResponse>? responses,
+    // null em photoPath significa "manter"; para TIRAR a foto, use estes
+    bool clearPhotoPath = false,
+    bool clearPhotoPath2 = false,
   }) {
     return FormResponse(
       id: id ?? this.id,
@@ -135,8 +138,8 @@ class FormResponse {
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
       locationName: locationName ?? this.locationName,
-      photoPath: photoPath ?? this.photoPath,
-      photoPath2: photoPath2 ?? this.photoPath2,
+      photoPath: clearPhotoPath ? null : (photoPath ?? this.photoPath),
+      photoPath2: clearPhotoPath2 ? null : (photoPath2 ?? this.photoPath2),
       audioPath: audioPath ?? this.audioPath,
       consentGiven: consentGiven ?? this.consentGiven,
       clientId: clientId ?? this.clientId,

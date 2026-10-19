@@ -669,6 +669,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
               maxDimension: _maxPhotoWidth.toInt(),
               quality: _photoQuality / 100,
             );
+            // Foto vazia seria descartada como órfã na sincronização, e a
+            // coleta chegaria ao painel citando um arquivo que nunca sobe.
+            if (bytes.isEmpty) {
+              _avisarFotoNaoAnexada();
+              return;
+            }
             final filename =
                 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
             // Foto anterior refeita? Remover a pendência órfã.
@@ -677,34 +683,34 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
             }
             await WebMediaStore.save(
                 filename: filename, bytes: bytes, kind: 'photo');
+            if (!mounted) return;
+            final anexada = Provider.of<FormProvider>(context, listen: false)
+                .setPhoto(filename);
+            if (!anexada) {
+              await WebMediaStore.delete(filename);
+              _avisarFotoNaoAnexada();
+              return;
+            }
             setState(() {
               _capturedPhotoBytes = bytes;
               _photoFilename = filename;
             });
-            if (mounted) {
-              Provider.of<FormProvider>(context, listen: false)
-                  .setPhoto(filename);
-            }
             return;
           }
 
+          if (!mounted) return;
+          // A foto vai para a fila de envio na finalização
+          // (FormProvider.submitFormWithPhoto); aqui só entra no formulário.
+          final anexada = Provider.of<FormProvider>(context, listen: false)
+              .setPhoto(photo.path);
+          if (!anexada) {
+            _avisarFotoNaoAnexada();
+            return;
+          }
           setState(() {
             _capturedPhoto = File(photo.path);
           });
-
-          try {
-            final formProvider = Provider.of<FormProvider>(context, listen: false);
-
-            // NOVA LÓGICA: Não salvar imediatamente offline aqui
-            // Apenas definir o caminho da foto no formulário
-            formProvider.setPhoto(photo.path);
-            print('✅ Caminho da foto definido no FormProvider');
-
-            // A foto será salva offline automaticamente durante a submissão do formulário
-
-          } catch (e) {
-            print('❌ Erro ao definir foto no FormProvider: $e');
-          }
+          print('✅ Caminho da foto definido no FormProvider');
         } else {
           print('⚠️ Nenhuma foto foi capturada');
         }
@@ -734,12 +740,27 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     }
   }
 
+  /// A foto foi tirada mas não entrou no formulário: o aplicador precisa
+  /// saber, senão finaliza achando que ela foi junto.
+  void _avisarFotoNaoAnexada() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Não foi possível anexar a foto. Tire a foto novamente.'),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
   void _retakePhoto() {
     print('🔄 Refazendo foto');
     // Web: remover a pendência do IndexedDB para não subir foto órfã.
     if (_photoFilename != null) {
       WebMediaStore.delete(_photoFilename!);
     }
+    // E tirar do formulário: se o aplicador finalizasse sem tirar outra, a
+    // coleta citaria a foto descartada, que nunca chegaria ao painel.
+    Provider.of<FormProvider>(context, listen: false).clearPhoto();
     setState(() {
       _capturedPhoto = null;
       _capturedPhotoBytes = null;
@@ -781,6 +802,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
               maxDimension: _maxPhotoWidth.toInt(),
               quality: _photoQuality / 100,
             );
+            if (bytes.isEmpty) {
+              _avisarFotoNaoAnexada();
+              return;
+            }
             final filename =
                 'photo2_${DateTime.now().millisecondsSinceEpoch}.jpg';
             if (_photo2Filename != null) {
@@ -788,30 +813,32 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
             }
             await WebMediaStore.save(
                 filename: filename, bytes: bytes, kind: 'photo');
+            if (!mounted) return;
+            final anexada = Provider.of<FormProvider>(context, listen: false)
+                .setPhoto2(filename);
+            if (!anexada) {
+              await WebMediaStore.delete(filename);
+              _avisarFotoNaoAnexada();
+              return;
+            }
             setState(() {
               _capturedPhoto2Bytes = bytes;
               _photo2Filename = filename;
             });
-            if (mounted) {
-              Provider.of<FormProvider>(context, listen: false)
-                  .setPhoto2(filename);
-            }
             return;
           }
 
+          if (!mounted) return;
+          final anexada = Provider.of<FormProvider>(context, listen: false)
+              .setPhoto2(photo.path);
+          if (!anexada) {
+            _avisarFotoNaoAnexada();
+            return;
+          }
           setState(() {
             _capturedPhoto2 = File(photo.path);
           });
-
-          if (!mounted) return;
-
-          try {
-            final formProvider = Provider.of<FormProvider>(context, listen: false);
-            formProvider.setPhoto2(photo.path);
-            print('✅ Caminho da segunda foto definido no FormProvider');
-          } catch (e) {
-            print('❌ Erro ao definir segunda foto no FormProvider: $e');
-          }
+          print('✅ Caminho da segunda foto definido no FormProvider');
         } else {
           print('⚠️ Nenhuma segunda foto foi capturada');
         }
@@ -847,6 +874,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     if (_photo2Filename != null) {
       WebMediaStore.delete(_photo2Filename!);
     }
+    Provider.of<FormProvider>(context, listen: false).clearPhoto2();
     setState(() {
       _capturedPhoto2 = null;
       _capturedPhoto2Bytes = null;
@@ -1006,9 +1034,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(formProvider.isEditMode
-                  ? 'Erro ao atualizar formulário. Tente novamente.'
-                  : 'Erro ao salvar formulário. Tente novamente.'),
+              content: Text(formProvider.submitError ??
+                  (formProvider.isEditMode
+                      ? 'Erro ao atualizar formulário. Tente novamente.'
+                      : 'Erro ao salvar formulário. Tente novamente.')),
               backgroundColor: Colors.red,
             ),
           );
