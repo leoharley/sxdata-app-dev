@@ -40,6 +40,10 @@ class _QuestionScreenState extends State<QuestionScreen>
   int _currentVisibleIndex = 0;
   bool _isInitialized = false;
 
+  /// Perguntas visíveis no último build. Lida pela física do PageView, que
+  /// não é trocada a cada build (ver o comentário em `physics:`).
+  List<Question> _visibleQuestions = const [];
+
   // Audio recording
   final AudioRecorder _audioRecorder = AudioRecorder();
   bool _isRecording = false;
@@ -219,12 +223,8 @@ class _QuestionScreenState extends State<QuestionScreen>
         }
 
         // Obter questões visíveis
-        final visibleQuestions = <Question>[];
-        for (int i = 0; i < formProvider.questions.length; i++) {
-          if (formProvider.isQuestionVisible(i)) {
-            visibleQuestions.add(formProvider.questions[i]);
-          }
-        }
+        final visibleQuestions = _visibleQuestionsOf(formProvider);
+        _visibleQuestions = visibleQuestions;
 
         print(
           '👁️ Questões visíveis: ${visibleQuestions.length} de ${formProvider.questions.length}',
@@ -252,11 +252,17 @@ class _QuestionScreenState extends State<QuestionScreen>
                     // questão obrigatória atual não for respondida (o botão
                     // "Próxima" já valida; o gesto não validava). Voltar
                     // deslizando continua permitido.
+                    //
+                    // A função NÃO pode capturar `visibleQuestions`: o
+                    // Scrollable só troca a física quando muda o tipo, então
+                    // fica valendo a instância do primeiro build. Com uma
+                    // lista capturada, quem aparece por lógica condicional
+                    // deslocava os índices e "Próxima" travava sem aviso.
+                    // Por isso ela lê o campo _visibleQuestions, atualizado
+                    // a cada build.
                     physics: _BlockForwardSwipePhysics(
-                      canAdvance: () => _canAdvanceFromCurrentQuestion(
-                        visibleQuestions,
-                        formProvider,
-                      ),
+                      canAdvance: () =>
+                          _canAdvanceFromCurrentQuestion(formProvider),
                     ),
                     itemCount: visibleQuestions.length,
                     onPageChanged: (index) {
@@ -491,12 +497,24 @@ class _QuestionScreenState extends State<QuestionScreen>
   );
 }
 
+  List<Question> _visibleQuestionsOf(FormProvider formProvider) {
+    final visibleQuestions = <Question>[];
+    for (int i = 0; i < formProvider.questions.length; i++) {
+      if (formProvider.isQuestionVisible(i)) {
+        visibleQuestions.add(formProvider.questions[i]);
+      }
+    }
+    return visibleQuestions;
+  }
+
   /// Retorna true se a questão visível atual permite avançar por gesto:
   /// não obrigatória ou já respondida. Mesma regra do botão "Próxima".
-  bool _canAdvanceFromCurrentQuestion(
-    List<Question> visibleQuestions,
-    FormProvider formProvider,
-  ) {
+  ///
+  /// Usa _visibleQuestions (do último build), nunca uma lista capturada: a
+  /// física que chama esta função sobrevive aos rebuilds. Não recalcula aqui
+  /// porque roda a cada quadro de arrasto e animação.
+  bool _canAdvanceFromCurrentQuestion(FormProvider formProvider) {
+    final visibleQuestions = _visibleQuestions;
     if (_currentVisibleIndex < 0 ||
         _currentVisibleIndex >= visibleQuestions.length) {
       return true;
