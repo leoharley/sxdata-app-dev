@@ -25,8 +25,11 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.sxdata"
+        // O ID do app na Play Store (play.google.com/store/apps/details?id=br.com.sxdata.app).
+        // Precisa ser EXATAMENTE este: com outro ID o build vira um segundo
+        // app no celular, que não enxerga as coletas pendentes do app da loja.
+        // O namespace e o pacote Kotlin (com.example.sxdata) não precisam mudar.
+        applicationId = "br.com.sxdata.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 23
