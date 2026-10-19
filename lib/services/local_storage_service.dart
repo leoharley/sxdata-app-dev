@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/questionnaire.dart';
 import '../models/form_response.dart';
@@ -184,8 +185,60 @@ class LocalStorageService {
     }
   }
 
+  /// Grava a lista de coletas SEM perder o que esta versão não conseguiu ler.
+  ///
+  /// Toda gravação lê a lista, altera e regrava a lista inteira. Um registro
+  /// que a leitura pula (formato inesperado de uma versão anterior) ficava
+  /// de fora e era APAGADO na gravação seguinte. Agora ele é mantido como
+  /// está; e se o texto inteiro não for JSON válido, uma cópia é guardada
+  /// antes de sobrescrever. Nenhuma coleta pendente some numa atualização.
+  static Future<bool> _persistForms(
+      SharedPreferences prefs, List<FormResponse> forms) async {
+    final atual = prefs.getString(_formsKey);
+    final preservados = <dynamic>[];
+
+    if (atual != null && atual.isNotEmpty) {
+      dynamic lista;
+      try {
+        lista = jsonDecode(atual);
+      } catch (_) {
+        lista = null;
+      }
+      if (lista is List) {
+        // Os legíveis já estão em [forms] (vieram de getFormResponses);
+        // só o que esta versão não consegue ler precisa ser preservado.
+        for (final item in lista) {
+          try {
+            FormResponse.fromJson(item as Map<String, dynamic>);
+          } catch (_) {
+            preservados.add(item);
+          }
+        }
+      } else {
+        final chave = '${_formsKey}_corrompido_'
+            '${DateTime.now().millisecondsSinceEpoch}';
+        await prefs.setString(chave, atual);
+        print('⚠️ Coletas em formato inválido guardadas em $chave');
+      }
+    }
+
+    if (preservados.isNotEmpty) {
+      print('⚠️ ${preservados.length} coleta(s) que esta versão não lê '
+          'foram mantidas como estavam');
+    }
+    final json = [...forms.map((f) => f.toJson()), ...preservados];
+    return prefs.setString(_formsKey, jsonEncode(json));
+  }
+
   // Form Responses - VERSÃO CORRIGIDA
-  static Future<void> saveFormResponse(FormResponse form) async {
+  //
+  // Pela mesma fila das outras gravações: sem ela, salvar uma coleta nova
+  // enquanto a sincronização atualiza status regravava a lista lida ANTES
+  // da coleta nova existir, e ela sumia.
+  static Future<void> saveFormResponse(FormResponse form) =>
+      _withFormsLock(() => _saveFormResponse(form));
+
+  static Future<void> _saveFormResponse(FormResponse form) async {
     try {
       print('💾 === INICIANDO SALVAMENTO DE FORMULÁRIO ===');
       print('📋 QuestionÃ¡rio ID: ${form.questionnaireId}');
@@ -207,25 +260,11 @@ class LocalStorageService {
       
       // Carregar formas existentes
       print('📖 Carregando formulários existentes...');
-      List<FormResponse> existingForms = [];
-      
-      try {
-        final existingJsonString = prefs.getString(_formsKey);
-        print('📋 JSON existente encontrado: ${existingJsonString != null}');
-        
-        if (existingJsonString != null) {
-          final existingJsonList = jsonDecode(existingJsonString) as List<dynamic>;
-          existingForms = existingJsonList
-              .map((json) => FormResponse.fromJson(json as Map<String, dynamic>))
-              .toList();
-          print('✅ ${existingForms.length} formulários existentes carregados');
-        } else {
-          print('📋 Nenhum formulário existente encontrado - criando nova lista');
-        }
-      } catch (e) {
-        print('⚠️ Erro ao carregar formulários existentes: $e - começando com lista vazia');
-        existingForms = [];
-      }
+      // Leitura tolerante, registro a registro. Antes, UM registro ilegível
+      // fazia esta função recomeçar com a lista vazia e gravar só a coleta
+      // nova: todas as pendentes anteriores eram apagadas.
+      final List<FormResponse> existingForms = await getFormResponses();
+      print('✅ ${existingForms.length} formulários existentes carregados');
       
       // Verificar se já existe um formulário com o mesmo ID
       print('🔍 === VERIFICANDO DUPLICAÇÃO ===');
@@ -261,28 +300,9 @@ class LocalStorageService {
       
       print('📋 Total de formulários para salvar: ${existingForms.length}');
       
-      // Serializar todos os formulários
-      print('🔄 Serializando formulários...');
-      final jsonList = <Map<String, dynamic>>[];
-      for (int i = 0; i < existingForms.length; i++) {
-        try {
-          final json = existingForms[i].toJson();
-          jsonList.add(json);
-          print('✅ Formulário $i serializado (ID: ${existingForms[i].id})');
-        } catch (e) {
-          print('❌ Erro ao serializar formulário $i: $e');
-          // Continua com os outros formulários
-        }
-      }
-      
-      // Converter para string JSON
-      print('🔄 Convertendo para JSON string...');
-      final jsonString = jsonEncode(jsonList);
-      print('📋 Tamanho do JSON: ${jsonString.length} caracteres');
-      
       // Salvar no SharedPreferences
       print('💾 Salvando no SharedPreferences...');
-      final saveResult = await prefs.setString(_formsKey, jsonString);
+      final saveResult = await _persistForms(prefs, existingForms);
       print('📋 Resultado do salvamento: $saveResult');
       
       if (saveResult) {
@@ -445,6 +465,14 @@ class LocalStorageService {
   /// coleta existir — e a resposta sumia do app sem nunca ter sido enviada.
   static Future<void> _formsLock = Future<void>.value();
 
+  /// Testes de widget: cada teste roda numa zona de relógio simulado, e um
+  /// Future agenda seus .then na zona onde nasceu. A fila criada no teste
+  /// anterior nunca mais andaria. No app há uma zona só.
+  @visibleForTesting
+  static void resetWriteQueueForTesting() {
+    _formsLock = Future<void>.value();
+  }
+
   static Future<T> _withFormsLock<T>(Future<T> Function() action) {
     final completer = Completer<T>();
     _formsLock = _formsLock.then((_) async {
@@ -502,9 +530,7 @@ class LocalStorageService {
       }
 
       final prefs = await SharedPreferences.getInstance();
-      final jsonList = forms.map((f) => f.toJson()).toList();
-      final jsonString = jsonEncode(jsonList);
-      final result = await prefs.setString(_formsKey, jsonString);
+      final result = await _persistForms(prefs, forms);
 
       if (result) {
         print('✅ === STATUS ATUALIZADO COM SUCESSO ===');
@@ -521,8 +547,11 @@ class LocalStorageService {
     }
   }
 
-  /// Atualizar um formulário existente
-  static Future<void> updateFormResponse(FormResponse form) async {
+  /// Atualizar um formulário existente (pela fila das gravações)
+  static Future<void> updateFormResponse(FormResponse form) =>
+      _withFormsLock(() => _updateFormResponse(form));
+
+  static Future<void> _updateFormResponse(FormResponse form) async {
     try {
       print('🔄 === ATUALIZANDO FORMULÁRIO ===');
       print('📋 Form ID: ${form.id}');
@@ -550,9 +579,7 @@ class LocalStorageService {
       }
 
       final prefs = await SharedPreferences.getInstance();
-      final jsonList = forms.map((f) => f.toJson()).toList();
-      final jsonString = jsonEncode(jsonList);
-      final result = await prefs.setString(_formsKey, jsonString);
+      final result = await _persistForms(prefs, forms);
 
       if (result) {
         print('✅ === FORMULÁRIO ATUALIZADO COM SUCESSO ===');
@@ -594,8 +621,7 @@ class LocalStorageService {
         }
         if (changed > 0) {
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString(
-              _formsKey, jsonEncode(forms.map((f) => f.toJson()).toList()));
+          await _persistForms(prefs, forms);
           print('📸 $oldName → $newName em $changed coleta(s)');
         }
         return changed;

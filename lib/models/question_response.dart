@@ -19,20 +19,36 @@ class QuestionResponse {
 
   factory QuestionResponse.fromJson(Map<String, dynamic> json) {
     try {
+      // Tolerante a números gravados como texto, inteiro ou double: uma
+      // resposta ilegível tornaria a coleta inteira ilegível (e ela não
+      // subiria). Ver FormResponse.fromJson.
+      int? asInt(dynamic v) => v == null
+          ? null
+          : (v is num ? v.toInt() : int.tryParse(v.toString()));
+      final questionId = asInt(json['question_id']);
+      if (questionId == null) {
+        throw FormatException('resposta sem question_id: $json');
+      }
+      final numero = json['response_number'];
+      final opcoes = json['selected_options'];
       return QuestionResponse(
-        id: json['id'] as int?,
-        questionId: json['question_id'] as int,
-        responseText: json['response_text'] as String?,
-        responseNumber: json['response_number'] as double?,
-        responseDate: json['response_date'] != null 
-            ? DateTime.parse(json['response_date'] as String) 
+        id: asInt(json['id']),
+        questionId: questionId,
+        responseText: json['response_text']?.toString(),
+        responseNumber: numero == null
+            ? null
+            : (numero is num
+                ? numero.toDouble()
+                : double.tryParse(numero.toString())),
+        responseDate: json['response_date'] != null
+            ? DateTime.tryParse(json['response_date'].toString())
             : null,
-        responseDatetime: json['response_datetime'] != null 
-            ? DateTime.parse(json['response_datetime'] as String) 
+        responseDatetime: json['response_datetime'] != null
+            ? DateTime.tryParse(json['response_datetime'].toString())
             : null,
-        selectedOptions: (json['selected_options'] as List<dynamic>?)
-            ?.map((option) => option.toString())
-            .toList(),
+        selectedOptions: opcoes is List
+            ? opcoes.map((option) => option.toString()).toList()
+            : (opcoes == null ? null : [opcoes.toString()]),
       );
     } catch (e, stackTrace) {
       print('❌ Erro ao parsear QuestionResponse: $e');

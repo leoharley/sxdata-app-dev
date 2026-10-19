@@ -34,7 +34,10 @@ void main() {
         ],
       );
 
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    LocalStorageService.resetWriteQueueForTesting();
+  });
 
   // A fonte do ambiente de teste é larga: o texto da caixa de altura fixa da
   // segunda foto quebra em mais linhas e "estoura". Não é deste teste.
@@ -75,8 +78,13 @@ void main() {
 
   Future<void> finalizar(WidgetTester tester) async {
     await tester.tap(find.text('Finalizar'));
-    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 300)));
-    await tester.pump();
+    // O salvamento passa pela fila de gravações (uma cadeia de Futures): ela
+    // avança alternando tempo real e o relógio simulado do testWidgets.
+    for (var i = 0; i < 10; i++) {
+      await tester.runAsync(
+          () => Future.delayed(const Duration(milliseconds: 30)));
+      await tester.pump();
+    }
   }
 
   testWidgets('"Requer foto" sem foto: não finaliza e explica o motivo',

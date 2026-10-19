@@ -153,34 +153,63 @@ class FormResponse {
     );
   }
 
+  // Leitura tolerante: coletas gravadas por versões anteriores do app (ou
+  // vindas do navegador, onde todo número é double) não podem virar
+  // "ilegíveis" por um 17 gravado como "17" ou 17.0 — ilegível, a coleta
+  // pendente não sobe.
+  static int? _asInt(dynamic v) {
+    if (v == null) return null;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString());
+  }
+
+  static double? _asDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString());
+  }
+
+  static String? _asString(dynamic v) => v?.toString();
+
+  static DateTime? _asDate(dynamic v) =>
+      v == null ? null : DateTime.tryParse(v.toString());
+
   factory FormResponse.fromJson(Map<String, dynamic> json) {
     try {
+      final questionnaireId = _asInt(json['questionnaire_id']);
+      final appliedBy = _asInt(json['applied_by']);
+      // Sem início registrado vale a conclusão: a coleta não pode ser
+      // descartada por isso.
+      final startedAt =
+          _asDate(json['started_at']) ?? _asDate(json['completed_at']);
+      if (questionnaireId == null || appliedBy == null || startedAt == null) {
+        throw FormatException(
+            'coleta sem questionário, aplicador ou data: $json');
+      }
+
+      final consent = json['consent_given'];
       return FormResponse(
-        id: json['id'] as int?,
-        questionnaireId: json['questionnaire_id'] as int,
-        respondentName: json['respondent_name'] as String?,
-        respondentEmail: json['respondent_email'] as String?,
-        appliedBy: json['applied_by'] as int,
-        latitude: json['latitude'] as double?,
-        longitude: json['longitude'] as double?,
-        locationName: json['location_name'] as String?,
-        photoPath: json['photo_path'] as String?,
-        photoPath2: json['photo_path_2'] as String?,
-        audioPath: json['audio_path'] as String?,
-        consentGiven: json['consent_given'] as bool? ?? false,
-        clientId: json['client_id'] as String?,
-        syncStatus: json['sync_status'] as String? ?? 'pending',
-        serverId: json['server_id'] as int?,
-        syncedAt: json['synced_at'] != null
-            ? DateTime.tryParse(json['synced_at'] as String)
-            : null,
-        startedAt: DateTime.parse(json['started_at'] as String),
-        completedAt: json['completed_at'] != null
-            ? DateTime.parse(json['completed_at'] as String)
-            : null,
-        editedAt: json['edited_at'] != null
-            ? DateTime.parse(json['edited_at'] as String)
-            : null,
+        id: _asInt(json['id']),
+        questionnaireId: questionnaireId,
+        respondentName: _asString(json['respondent_name']),
+        respondentEmail: _asString(json['respondent_email']),
+        appliedBy: appliedBy,
+        latitude: _asDouble(json['latitude']),
+        longitude: _asDouble(json['longitude']),
+        locationName: _asString(json['location_name']),
+        photoPath: _asString(json['photo_path']),
+        photoPath2: _asString(json['photo_path_2']),
+        audioPath: _asString(json['audio_path']),
+        consentGiven: consent == true || consent == 1 || consent == '1' ||
+            consent == 'true',
+        clientId: _asString(json['client_id']),
+        syncStatus: _asString(json['sync_status']) ?? 'pending',
+        serverId: _asInt(json['server_id']),
+        syncedAt: _asDate(json['synced_at']),
+        startedAt: startedAt,
+        completedAt: _asDate(json['completed_at']),
+        editedAt: _asDate(json['edited_at']),
         responses: (json['responses'] as List<dynamic>?)
             ?.map((r) => QuestionResponse.fromJson(r as Map<String, dynamic>))
             .toList() ?? [],
