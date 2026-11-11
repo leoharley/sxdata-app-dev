@@ -12,6 +12,7 @@ import '../widgets/app_header.dart';
 import '../widgets/sync_status_card.dart';
 import '../widgets/stats_cards.dart';
 import '../widgets/questionnaire_list.dart';
+import '../widgets/field_points_card.dart';
 import '../services/local_storage_service.dart';
 import '../models/form_response.dart';
 import 'questionnaire_preview_screen.dart';
@@ -286,6 +287,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                                     _buildSentFormsCard(),
                                   ],
                                   const SizedBox(height: 20),
+                                  const FieldPointsCard(),
+                                  const SizedBox(height: 20),
                                   _buildManagementOptions(context),
                                   const SizedBox(height: 20),
                                   _buildQuickStats(),
@@ -316,6 +319,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                                     const SizedBox(height: 20),
                                     _buildSentFormsCard(),
                                   ],
+                                  const SizedBox(height: 20),
+                                  const FieldPointsCard(),
                                   const SizedBox(height: 20),
                                   Consumer<QuestionnaireProvider>(
                                     builder: (context, provider, child) {

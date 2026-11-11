@@ -11,6 +11,7 @@ import '../models/conditional_logic.dart';
 import '../services/conditional_logic_engine.dart';
 import '../services/local_storage_service.dart';
 import '../services/api_service.dart';
+import '../services/point_sync_service.dart';
 import '../services/photo_storage_service.dart';
 import '../services/platform_caps.dart';
 import '../services/web_media_store/web_media_store.dart';
@@ -28,6 +29,10 @@ class FormProvider with ChangeNotifier {
   // Campos para modo de edição
   bool _isEditMode = false;
   String? _editingFormId;
+
+  /// Ponto de campo escolhido antes de a coleta começar (tela do
+  /// questionário). startForm aplica e limpa.
+  String? _pontoParaProximaColeta;
 
   FormResponse? get currentForm => _currentForm;
   Map<int, QuestionResponse> get responses => _responses;
@@ -123,8 +128,10 @@ class FormProvider with ChangeNotifier {
           // Persistido junto com ela, então todo reenvio manda o mesmo
           // valor e o backend deduplica em vez de duplicar.
           clientId: const Uuid().v4(),
+          pointClientId: _pontoParaProximaColeta,
           startedAt: DateTime.now(),
         );
+        _pontoParaProximaColeta = null;
         print('📝 client_id gerado: ${_currentForm!.clientId}');
         print('📝 Novo formulário criado com ID: ${_currentForm!.id}');
         _responses.clear();
@@ -155,6 +162,20 @@ class FormProvider with ChangeNotifier {
       print('📋 Stack trace: $stackTrace');
       rethrow;
     }
+  }
+
+  /// Vincula a próxima coleta a um ponto de campo (null = sem ponto).
+  void vincularProximaColetaAoPonto(String? pointClientId) {
+    _pontoParaProximaColeta = pointClientId;
+  }
+
+  /// Troca o ponto da coleta em andamento (null desvincula).
+  void vincularColetaAtualAoPonto(String? pointClientId) {
+    if (_currentForm == null) return;
+    _currentForm = pointClientId == null
+        ? _currentForm!.copyWith(clearPointClientId: true)
+        : _currentForm!.copyWith(pointClientId: pointClientId);
+    notifyListeners();
   }
 
   /// Carrega um formulário existente para edição
@@ -1122,6 +1143,7 @@ class FormProvider with ChangeNotifier {
             questionnaireId: _currentForm!.questionnaireId,
             appliedBy: _currentForm!.appliedBy,
             consentGiven: _currentForm!.consentGiven,
+            pointClientId: _currentForm!.pointClientId,
             syncStatus: 'pending',
             startedAt: _currentForm!.startedAt,
             completedAt: DateTime.now(),
@@ -1766,6 +1788,19 @@ class FormProvider with ChangeNotifier {
         _lastSyncError = 'Erro ao enviar fotos/áudios: '
             '${e.toString().replaceAll('Exception: ', '')}';
         return mediaSyncedCount;
+      }
+
+      // Pontos de campo ANTES das coletas: o vínculo coleta-ponto já chega
+      // completo. Falha aqui não segura as coletas — o painel completa o
+      // vínculo quando o ponto chegar (field_point_client_id).
+      try {
+        final pontos = await PointSyncService.enviarPendentes();
+        if (pontos > 0) print('📍 $pontos ponto(s) de campo confirmado(s)');
+        if (PointSyncService.ultimoErro != null) {
+          print('⚠️ Pontos de campo: ${PointSyncService.ultimoErro}');
+        }
+      } catch (e) {
+        print('⚠️ Erro ao enviar pontos de campo: $e');
       }
 
       int formsSyncedCount = 0;

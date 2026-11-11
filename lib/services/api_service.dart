@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/field_point.dart';
 import '../models/form_response.dart';
 
 class ApiService {
@@ -1332,6 +1333,72 @@ class ApiService {
       print('❌ Erro de conectividade: $e');
       return false;
     }
+  }
+
+  // ========== PONTOS DE CAMPO (mapa integrado) ==========
+  // Contrato: docs/API_PONTOS.md do sxdata-painel-dev.
+
+  /// POST api/points/submit. Devolve o JSON do servidor em 200.
+  ///
+  /// 400 (dados que o servidor recusa) e 403 (sem acesso ao projeto) são
+  /// [PermanentSubmitException]: reenviar o mesmo ponto daria o mesmo erro.
+  /// Os demais erros são temporários e o ponto fica na fila.
+  static Future<Map<String, dynamic>> submitPoint(FieldPoint ponto) async {
+    final http.Response response;
+    try {
+      response = await http
+          .post(
+            Uri.parse('$baseUrl/points/submit'),
+            headers: await _getHeaders(),
+            body: jsonEncode(ponto.toApiJson()),
+          )
+          .timeout(const Duration(seconds: 45));
+    } on TimeoutException {
+      throw Exception('O servidor não respondeu em 45 segundos. O ponto '
+          'continua salvo no aparelho.');
+    } catch (e) {
+      throw Exception('Sem conexão com o servidor: $e');
+    }
+
+    Map<String, dynamic>? data;
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) data = decoded;
+    } catch (_) {}
+
+    if (response.statusCode == 200 && data != null) return data;
+
+    final msg = data?['message']?.toString() ?? 'HTTP ${response.statusCode}';
+    if (response.statusCode == 400 || response.statusCode == 403) {
+      throw PermanentSubmitException(msg, statusCode: response.statusCode);
+    }
+    throw Exception(msg);
+  }
+
+  /// GET api/points: pontos dos projetos a que o aplicador tem acesso.
+  static Future<List<FieldPoint>> getPoints({int? projectId, int? codigoIbge}) async {
+    final query = <String, String>{
+      if (projectId != null) 'project_id': '$projectId',
+      if (codigoIbge != null) 'codigo_ibge': '$codigoIbge',
+    };
+    final uri = Uri.parse('$baseUrl/points').replace(queryParameters: query.isEmpty ? null : query);
+    final response = await http
+        .get(uri, headers: await _getHeaders())
+        .timeout(const Duration(seconds: 30));
+
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode != 200 || decoded is! Map || decoded['success'] != true) {
+      throw Exception(decoded is Map ? (decoded['message'] ?? 'HTTP ${response.statusCode}') : 'HTTP ${response.statusCode}');
+    }
+    final lista = <FieldPoint>[];
+    for (final item in (decoded['data'] as List? ?? const [])) {
+      try {
+        lista.add(FieldPoint.fromJson(Map<String, dynamic>.from(item as Map), doServidor: true));
+      } catch (e) {
+        print('⚠️ Ponto do servidor ignorado: $e');
+      }
+    }
+    return lista;
   }
 }
 

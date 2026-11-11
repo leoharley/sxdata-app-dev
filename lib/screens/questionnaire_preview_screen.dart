@@ -4,7 +4,9 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../models/questionnaire.dart';
+import '../providers/form_provider.dart';
 import '../providers/questionnaire_provider.dart';
+import '../widgets/point_picker_sheet.dart';
 import '../services/platform_caps.dart';
 import 'consent_screen.dart';
 import 'question_screen.dart';
@@ -584,6 +586,13 @@ class _QuestionnairePreviewScreenState
     //    acabado de ligar "requer foto", que exige câmera).
     final permissionsOk = await _ensurePermissionsBeforeStart(questionnaire);
     if (!permissionsOk || !mounted) return;
+
+    // 3. Ponto de campo (mapa integrado), se o projeto tiver pontos. Sempre
+    //    grava a escolha, inclusive "sem ponto": uma escolha de coleta
+    //    abandonada não passa para a próxima.
+    final escolha = await PointPickerSheet.escolher(context, questionnaire);
+    if (escolha == null || !mounted) return;
+    context.read<FormProvider>().vincularProximaColetaAoPonto(escolha.$2);
 
     if (questionnaire.requiresConsent) {
       Navigator.push(

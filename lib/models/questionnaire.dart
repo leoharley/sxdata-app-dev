@@ -15,6 +15,11 @@ class Questionnaire {
   final DateTime updatedAt;
   final List<Question> questions;
 
+  /// Projeto do questionário no painel (null = sem projeto). Os pontos de
+  /// campo são por projeto: a coleta só vincula a ponto do mesmo projeto.
+  final int? projectId;
+  final String? projectName;
+
   Questionnaire({
     required this.id,
     required this.title,
@@ -29,6 +34,8 @@ class Questionnaire {
     required this.createdAt,
     required this.updatedAt,
     required this.questions,
+    this.projectId,
+    this.projectName,
   });
 
   // Método auxiliar para converter string em int
@@ -111,6 +118,8 @@ class Questionnaire {
         createdAt: _parseDateTime(json['created_at']),
         updatedAt: _parseDateTime(json['updated_at']),
         questions: questionsList,
+        projectId: _parseInt(json['project_id']) > 0 ? _parseInt(json['project_id']) : null,
+        projectName: json['project_name']?.toString(),
       );
 
       print('✅ Questionnaire parsed successfully: ${questionnaire.title} with ${questionnaire.questions.length} questions');
@@ -139,6 +148,8 @@ class Questionnaire {
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
       'questions': questions.map((q) => q.toJson()).toList(),
+      'project_id': projectId,
+      'project_name': projectName,
     };
   }
 

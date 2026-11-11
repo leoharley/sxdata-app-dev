@@ -32,6 +32,12 @@ class FormResponse {
   /// perdida devolve o registro já gravado em vez de duplicar.
   final String? clientId;
 
+  /// client_id do ponto de campo (mapa integrado) ao qual a coleta está
+  /// vinculada, ou null. Vai no envio como `point_client_id`: se o ponto
+  /// ainda não chegou ao painel, o painel guarda o valor e completa o
+  /// vínculo quando o ponto chegar.
+  final String? pointClientId;
+
   /// 'pending'  = ainda não confirmado pelo painel (inclui tentativas que
   ///              falharam); é o que a fila reenvia.
   /// 'synced'   = o servidor CONFIRMOU a gravação. Só então some da fila.
@@ -94,6 +100,7 @@ class FormResponse {
     this.audioPath,
     required this.consentGiven,
     this.clientId,
+    this.pointClientId,
     this.syncStatus = 'pending',
     this.serverId,
     this.syncedAt,
@@ -118,6 +125,7 @@ class FormResponse {
     String? audioPath,
     bool? consentGiven,
     String? clientId,
+    String? pointClientId,
     String? syncStatus,
     int? serverId,
     DateTime? syncedAt,
@@ -128,6 +136,7 @@ class FormResponse {
     // null em photoPath significa "manter"; para TIRAR a foto, use estes
     bool clearPhotoPath = false,
     bool clearPhotoPath2 = false,
+    bool clearPointClientId = false,
   }) {
     return FormResponse(
       id: id ?? this.id,
@@ -143,6 +152,7 @@ class FormResponse {
       audioPath: audioPath ?? this.audioPath,
       consentGiven: consentGiven ?? this.consentGiven,
       clientId: clientId ?? this.clientId,
+      pointClientId: clearPointClientId ? null : (pointClientId ?? this.pointClientId),
       syncStatus: syncStatus ?? this.syncStatus,
       serverId: serverId ?? this.serverId,
       syncedAt: syncedAt ?? this.syncedAt,
@@ -204,6 +214,7 @@ class FormResponse {
         consentGiven: consent == true || consent == 1 || consent == '1' ||
             consent == 'true',
         clientId: _asString(json['client_id']),
+        pointClientId: _asString(json['point_client_id']),
         syncStatus: _asString(json['sync_status']) ?? 'pending',
         serverId: _asInt(json['server_id']),
         syncedAt: _asDate(json['synced_at']),
@@ -241,6 +252,9 @@ class FormResponse {
         // (UNIQUE em client_id). Precisa ser o MESMO valor em toda
         // tentativa, por isso é persistido com a coleta.
         if (clientId != null) 'client_id': clientId,
+        // Omitido quando não há ponto: numa edição, o painel mantém o
+        // vínculo que já existe (enviar "" desvincularia).
+        if (pointClientId != null) 'point_client_id': pointClientId,
         'sync_status': syncStatus,
         // Controle local de confirmação; o servidor ignora estes campos.
         if (serverId != null) 'server_id': serverId,
